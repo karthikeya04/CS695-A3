@@ -217,10 +217,13 @@ exec()
 
     # This is the PID of the unshare process for the given container
     local UNSHARE_PID=$(ps -ef | grep "$CONTAINERDIR/$NAME/rootfs" | grep -v grep | awk '{print $2}')
+    
+    [ -z "$UNSHARE_PID" ] && die "Cannot find container process"
+
     # This is the PID of the process that unshare executed within the container
     local CONTAINER_INIT_PID=$(pgrep -P $UNSHARE_PID | head -1)
 
-    [ -z "CONTAINER_INIT_PID" ] && die "Cannot find container process"
+    [ -z "$CONTAINER_INIT_PID" ] && die "Cannot find container process"
 
 
 
@@ -344,6 +347,12 @@ addnetwork()
         # Lesson: This iptable rule will replace the ip address and port of any TCP packet received on default interface 
         # destined to OUTER_PORT
         iptables -t nat -A PREROUTING -p tcp -i ${DEFAULT_IFC} --dport ${OUTER_PORT} -j DNAT --to-destination ${INSIDE_IP4}:${INNER_PORT}
+        # Lesson: The above rule will only route packets received on the external interface. As a result
+        # curl <host-self-ip>:port will not work within the host itself.
+        # This iptable rule wiill redirect packets generated 
+        # within the host with destination set as hostip:OUTER_PORT to the containers:INNER_PORT. 
+        # This will still not work for localhost/127.0.0.1. You will have to send using the host-ip
+        iptables -t nat -A OUTPUT -o lo -m addrtype --src-type LOCAL --dst-type LOCAL -p tcp --dport ${OUTER_PORT} -j DNAT --to-destination ${INSIDE_IP4}:${INNER_PORT}
         # Lesson: Allows forwarding of TCP session initiator packets from the public to the container
         iptables -A FORWARD -p tcp -d ${INSIDE_IP4} --dport ${INNER_PORT} -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT
         echo lol
@@ -356,7 +365,7 @@ addnetwork()
 peer()
 {
     local NAMEA=${1:-}
-    local NAMEB=${1:-}
+    local NAMEB=${2:-}
     [ -z "$NAMEA" ] && die "First Container name is required"
     [ -z "$NAMEB" ] && die "Second Container name is required"
 
