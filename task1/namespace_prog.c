@@ -96,9 +96,12 @@ int main() {
    // ------------------ WRITE CODE HERE ------------------
 
 
-
-
-
+    child_pid  = clone(child_function, child_stack + CHILD_STACK_SIZE, CLONE_NEWUTS | CLONE_NEWPID | SIGCHLD, pipefd);
+    if(child_pid == -1) {
+        errExit("clone");
+    }
+    // To allow child process to set its hostname
+    sleep(1);
 
    // -----------------------------------------------------
 
@@ -114,7 +117,13 @@ int main() {
 
     // ------------------ WRITE CODE HERE ------------------
 
-
+    int pidfd = syscall(SYS_pidfd_open, child_pid, 0);
+    if(pidfd == -1) {
+        errExit("pidfd_open");
+    }
+    if(setns(pidfd, CLONE_NEWPID) == -1) {
+        errExit("1:setns");
+    }
 
 
     // -----------------------------------------------------
@@ -134,9 +143,9 @@ int main() {
         */
 
         // ------------------ WRITE CODE HERE ------------------
-
-
-
+        if(setns(pidfd, CLONE_NEWUTS) == -1) {
+            errExit("2:setns");
+        }
         // -----------------------------------------------------
 
         child2_function();
