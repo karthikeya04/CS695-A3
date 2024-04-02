@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # CS695 Conductor that manages containers 
-# Author: <your-name>
+# Author: Karthikeya
 #
 echo -e "\e[1;32mCS695 Conductor that manages containers\e[0m"
 
@@ -134,6 +134,7 @@ run()
 
     # Subtask 3.a.1
     # You should bind mount /dev within the container root fs
+    mount --bind /dev "$CONTAINERDIR/$NAME/rootfs/dev"
 
     # Subtask 3.a.2
     # - Use unshare to run the container in a new [uts, pid, net, mount, ipc] namespaces
@@ -143,6 +144,10 @@ run()
     # - When unshare process exits all of its children also exit (--kill-child option)
     # - permission of root dir within container should be set to 755 for apt to work correctly
     # - $INIT_CMD_ARGS should be the entry program for the container 
+    # Reference: https://superuser.com/questions/165116/mount-dev-proc-sys-in-a-chroot-environment
+    chmod 750 $CONTAINERDIR/$NAME/rootfs
+    unshare --fork --ipc --pid --uts --net --mount --kill-child chroot $CONTAINERDIR/$NAME/rootfs \
+            /bin/bash -c "/bin/mount -t proc none /proc; /bin/mount -t sysfs none /sys; $INIT_CMD_ARGS;"
 }
 
 # This will show containers that are currently running
@@ -234,7 +239,7 @@ exec()
     # The executed process should be within correct namespace and root
     # directory as of the container and tools like ps, top should show only processes
     # running within the container
-
+    nsenter -t $CONTAINER_INIT_PID --mount --uts --ipc --net --pid --root --wd $EXEC_CMD_ARGS
 
 }
 
@@ -292,6 +297,9 @@ addnetwork()
     # Inside the container, it should use INSIDE_PEER interface and within the host it should use
     # OUTSIDE_PEER interface
     # You should use iproute2 tool (ip command)
+
+    # reference: https://developers.redhat.com/blog/2018/10/22/introduction-to-linux-interfaces-for-virtual-networking#veth
+    ip link add $INSIDE_PEER netns $NSDIR type veth peer name $OUTSIDE_PEER netns NETNSDIR
 
     # Lesson: By default linux does not forward packets, it only acts as an end host
     # We need to enable packet forwarding capability to forward packets to our containers
