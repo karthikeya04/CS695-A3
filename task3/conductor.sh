@@ -134,7 +134,8 @@ run()
 
     # Subtask 3.a.1
     # You should bind mount /dev within the container root fs
-    mount --bind /dev "$CONTAINERDIR/$NAME/rootfs/dev"
+    local CONTAINER_ROOT=$CONTAINERDIR/$NAME/rootfs
+    mount --bind /dev $CONTAINER_ROOT/dev
 
     # Subtask 3.a.2
     # - Use unshare to run the container in a new [uts, pid, net, mount, ipc] namespaces
@@ -145,8 +146,8 @@ run()
     # - permission of root dir within container should be set to 755 for apt to work correctly
     # - $INIT_CMD_ARGS should be the entry program for the container 
     # Reference: https://superuser.com/questions/165116/mount-dev-proc-sys-in-a-chroot-environment
-    chmod 750 $CONTAINERDIR/$NAME/rootfs
-    unshare --fork --ipc --pid --uts --net --mount --kill-child chroot $CONTAINERDIR/$NAME/rootfs \
+    chmod 750 $CONTAINER_ROOT
+    unshare --fork --ipc --pid --uts --net --mount --kill-child chroot $CONTAINER_ROOT \
             /bin/bash -c "/bin/mount -t proc none /proc; /bin/mount -t sysfs none /sys; $INIT_CMD_ARGS;"
 }
 
@@ -298,8 +299,11 @@ addnetwork()
     # OUTSIDE_PEER interface
     # You should use iproute2 tool (ip command)
 
-    # reference: https://developers.redhat.com/blog/2018/10/22/introduction-to-linux-interfaces-for-virtual-networking#veth
-    ip link add $INSIDE_PEER netns $NSDIR type veth peer name $OUTSIDE_PEER netns NETNSDIR
+    # reference: https://medium.com/@mishajib/connect-network-namespaces-through-veth-virtual-ethernet-cable-fb1d3a2a40f7
+    ip link add $INSIDE_PEER type veth peer name $OUTSIDE_PEER
+    ip link set $INSIDE_PEER netns $NSDIR
+    # No need to do the below 
+    # ip link set $OUTSIDE_PEER netns $NETNSDIR
 
     # Lesson: By default linux does not forward packets, it only acts as an end host
     # We need to enable packet forwarding capability to forward packets to our containers
@@ -309,8 +313,9 @@ addnetwork()
     # Enable the interfaces that you have created within the host and the container
     # You should also enable lo interface within the container (which is disabled by default)
     # In total here 3 interfaces should be enabled
-    
-
+    ip link set $OUTSIDE_PEER up
+    ip -n "$NAME" link set $INSIDE_PEER up
+    ip -n "$NAME" link set lo up
 
     # Lesson: Configuring addresses and adding routes for the container in the routing table
     # according to the addressing conventions selected above
@@ -343,8 +348,8 @@ addnetwork()
         iptables -A FORWARD -i ${OUTSIDE_PEER} -o ${DEFAULT_IFC} -j ACCEPT
 
         # Lesson: Setting DNS server statically as per IITB norms
-        cp /etc/resolv.conf /etc/resolv.conf.old
-        echo "nameserver 8.8.8.8" > /etc/resolv.conf
+        cp "$CONTAINERDIR/$NAME/rootfs/etc/resolv.conf" "$CONTAINERDIR/$NAME/rootfs/etc/resolv.conf.old"
+        echo "nameserver 8.8.8.8" > "$CONTAINERDIR/$NAME/rootfs/etc/resolv.conf"
 
     fi
     
